@@ -281,6 +281,21 @@ function TransactionsTab() {
       ),
     },
     {
+      accessorKey: "serial",
+      accessorFn: (row) => row?.item.serial,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Serial" />
+      ),
+      cell: ({ row }) => (
+        <span
+          onClick={() => openRow(row.original)}
+          className="font-mono text-xs text-muted-foreground cursor-pointer hover:underline transition p-2 rounded"
+        >
+          {row.original?.item.serial ?? "-"}
+        </span>
+      ),
+    },
+    {
       accessorKey: "name",
       accessorFn: (row) => row?.actionBy.name,
       header: ({ column }) => (

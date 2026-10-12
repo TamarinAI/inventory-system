@@ -110,10 +110,10 @@ describe("matchFilaments", () => {
     expect(result[0].slot?.trayType).toBe("PETG");
   });
 
-  it("skips trays with 0% remain", () => {
+  it("still matches trays reporting 0% remain", () => {
     const constraints: FilamentConstraint[] = [{ slotIndex: 0, type: "ABS" }];
     const result = matchFilaments(constraints, slots);
-    expect(result[0].matched).toBe(false);
+    expect(result[0].matched).toBe(true);
   });
 
   it("returns unmatched when no tray fits", () => {

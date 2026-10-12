@@ -5,6 +5,7 @@ import logoHorizontalLight from "@/assets/Horizontal Black & Blue.svg";
 
 import {
   Box,
+  PackageOpen,
   Settings,
   Home,
   ShoppingCartIcon,
@@ -43,6 +44,7 @@ import { cn } from "@/lib/utils";
 const coreItems = [
   { title: "Dashboard", url: "/dashboard", icon: Home },
   { title: "Assets", url: "/assets", icon: Box },
+  { title: "Consumables", url: "/consumables", icon: PackageOpen },
   { title: "Check-in", url: "/checkin", icon: ArrowRightToLine },
   { title: "Activity", url: "/activity", icon: ScrollText },
   { title: "Chat", url: "/chat", icon: MessageCircle },

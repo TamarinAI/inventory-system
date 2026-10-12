@@ -12,14 +12,13 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, CheckCircle2, Smile, Meh, Frown } from "lucide-react";
+import { Loader2, CheckCircle2, Smile, Frown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-type Smiley = "GOOD" | "OKAY" | "BAD";
+type Smiley = "GOOD" | "BAD";
 
 type RatingTag =
-  | "GOOD"
   | "FAILED"
   | "STOPPED"
   | "MECHANICAL_ISSUE"
@@ -30,7 +29,6 @@ type RatingTag =
   | "OTHER";
 
 const TAG_OPTIONS: { value: RatingTag; label: string }[] = [
-  { value: "GOOD", label: "Good" },
   { value: "FAILED", label: "Failed" },
   { value: "STOPPED", label: "Stopped" },
   { value: "MECHANICAL_ISSUE", label: "Mechanical issue" },
@@ -42,9 +40,8 @@ const TAG_OPTIONS: { value: RatingTag; label: string }[] = [
 ];
 
 const SMILEYS: { value: Smiley; icon: typeof Smile; label: string }[] = [
-  { value: "GOOD", icon: Smile, label: "Good print" },
-  { value: "OKAY", icon: Meh, label: "Okay print" },
-  { value: "BAD", icon: Frown, label: "Bad print" },
+  { value: "GOOD", icon: Smile, label: "Yes, the print succeeded" },
+  { value: "BAD", icon: Frown, label: "No, the print failed" },
 ];
 
 interface PrintRatingDialogProps {
@@ -109,14 +106,15 @@ export function PrintRatingDialog({
 
   const handleSubmit = () => {
     if (!smiley) return;
+    const failed = smiley === "BAD";
     ratingMutation.mutate(
       {
         bambuddyId,
         printerName,
         fileName,
         smiley,
-        tags,
-        notes: notes || undefined,
+        tags: failed ? tags : [],
+        notes: failed && notes ? notes : undefined,
       },
       {
         onSuccess: () => {
@@ -160,6 +158,9 @@ export function PrintRatingDialog({
         </div>
 
         <div className="space-y-4 py-2">
+          <p className="text-center text-sm font-medium">
+            Did the print succeed?
+          </p>
           <div className="flex justify-center gap-6">
             {SMILEYS.map(({ value, icon: Icon, label }) => (
               <button
@@ -175,11 +176,14 @@ export function PrintRatingDialog({
                 )}
               >
                 <Icon className="h-8 w-8" />
+                <span className="text-xs font-medium">
+                  {value === "GOOD" ? "Yes" : "No"}
+                </span>
               </button>
             ))}
           </div>
 
-          {smiley ? (
+          {smiley === "BAD" ? (
             <div className="space-y-3">
               <Label className="text-xs text-muted-foreground">
                 What happened? (optional)

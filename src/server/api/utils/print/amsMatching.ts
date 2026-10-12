@@ -78,7 +78,7 @@ function typeMatches(slotType: string | null, constraintType: string): boolean {
 
 /**
  * Match each constrained filament slot to the best available AMS tray.
- * Picks the tray with most remain among matches.
+ * Picks the tray with most remain among matches; remain never excludes one.
  */
 export function matchFilaments(
   constraints: FilamentConstraint[],
@@ -86,7 +86,6 @@ export function matchFilaments(
 ): SlotMatch[] {
   return constraints.map((constraint) => {
     const candidates = slots.filter((slot) => {
-      if (slot.remain <= 0) return false;
       if (constraint.type && !typeMatches(slot.trayType, constraint.type))
         return false;
       if (
@@ -101,6 +100,8 @@ export function matchFilaments(
       return { slotIndex: constraint.slotIndex, matched: false, slot: null };
     }
 
+    // Spool level is never a reason to refuse a tray (external/manually
+    // loaded spools often report 0 or -1), it only breaks ties.
     const best = candidates.reduce((a, b) => (a.remain >= b.remain ? a : b));
     return { slotIndex: constraint.slotIndex, matched: true, slot: best };
   });

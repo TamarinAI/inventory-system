@@ -1991,7 +1991,23 @@ function buildEcode(attr: number, code: number): string {
 export interface HmsErrorInfo {
   code: string;
   description: string;
+  /** True for issues an operator can fix (filament out, cover open, ...)
+   *  rather than a printer fault. */
+  operational: boolean;
+  /** Bambu's own page for this HMS code. */
+  wikiUrl: string;
 }
+
+// Problems the operator resolves by loading filament / closing a cover /
+// pressing resume - not a printer hardware fault.
+const OPERATIONAL_PATTERN =
+  /ran out|run out|runs out|out of filament|filament (is )?(empty|depleted)|no filament|(load|feed|insert) (new |the )?filament|(door|cover|lid) (is )?(open|not closed)|close the (door|cover|lid)/i;
+
+export function isOperationalHmsError(description: string): boolean {
+  return OPERATIONAL_PATTERN.test(description);
+}
+
+const hex8 = (n: number) => (n >>> 0).toString(16).padStart(8, "0");
 
 export function describeHmsErrors(
   errors: { code: string; attr: number }[],
@@ -1999,9 +2015,24 @@ export function describeHmsErrors(
   return errors.map((e) => {
     const codeInt = parseInt(e.code, 16);
     const ecode = buildEcode(e.attr, codeInt);
-    const description = HMS_ERROR_MAP[ecode] ?? `Unknown error (${e.code})`;
-    return { code: e.code, description };
+    const known = HMS_ERROR_MAP[ecode];
+    const description = known ?? `Unknown error (${e.code})`;
+    return {
+      code: e.code,
+      description,
+      operational: known != null && isOperationalHmsError(known),
+      wikiUrl: `https://e.bambulab.com/?e=${hex8(e.attr).toUpperCase()}${hex8(codeInt).toUpperCase()}`,
+    };
   });
+}
+
+/** "warning" (orange) when every error is operational, otherwise "error". */
+export function hmsAttentionLevel(
+  errors: { operational: boolean }[],
+): "warning" | "error" {
+  return errors.length > 0 && errors.every((e) => e.operational)
+    ? "warning"
+    : "error";
 }
 
 export function hmsErrorSummary(errors: { code: string }[]): string {
