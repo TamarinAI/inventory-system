@@ -3,7 +3,6 @@ import {
   useState,
   useRef,
   useCallback,
-  useEffect,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { trpc } from "@/client/trpc";
@@ -69,6 +68,7 @@ export default function PrintGcode() {
   });
 
   const [selectedPrinterIp, setSelectedPrinterIp] = useState("");
+  const [printerType, setPrinterType] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -159,7 +159,11 @@ export default function PrintGcode() {
     !!statusQuery.data &&
     BLOCKED_PRINTER_STATES.has(statusQuery.data.state.toUpperCase());
 
+  const printerTypes = [
+    ...new Set((printersQuery.data ?? []).map((printer) => printer.type)),
+  ].sort();
   const printerOptions = (printersQuery.data ?? [])
+    .filter((printer) => printer.type === printerType)
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name));
   const selectedPrinter =
@@ -168,11 +172,17 @@ export default function PrintGcode() {
   const isBambu = selectedPrinter?.type === "BAMBU";
   isBambuRef.current = isBambu;
 
-  useEffect(() => {
-    if (isBambu) {
+  // Bambu jobs go through the Bambuddy print queue, which has its own
+  // printer picker - so choosing the Bambu type hands straight over rather
+  // than asking for a printer here first.
+  const handlePrinterTypeChange = (type: string) => {
+    if (type === "BAMBU") {
       void navigate("/print-queue?open=upload");
+      return;
     }
-  }, [isBambu, navigate]);
+    setPrinterType(type);
+    setSelectedPrinterIp("");
+  };
 
   // AMS tray data from live printer status (excludes external spool tray 254)
   const amsTrays = (statusQuery.data?.amsTrays ?? []).filter(
@@ -233,7 +243,8 @@ export default function PrintGcode() {
       <div>
         <h1 className="text-3xl font-bold">Print</h1>
         <p className="text-muted-foreground">
-          Select a printer, choose a file, and hit print.
+          Select a printer type and printer, choose a file, and hit print. Bambu
+          printers use the print queue.
         </p>
       </div>
 
@@ -244,13 +255,38 @@ export default function PrintGcode() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
+              <Label>Printer type</Label>
+              <Select
+                value={printerType}
+                onValueChange={handlePrinterTypeChange}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a printer type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {printerTypes.map((type) => (
+                    <SelectItem value={type} key={type}>
+                      {type === "BAMBU"
+                        ? "Bambu (opens the print queue)"
+                        : type.charAt(0) + type.slice(1).toLowerCase()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label>Printer</Label>
               <Select
                 value={selectedPrinterIp}
                 onValueChange={setSelectedPrinterIp}
+                disabled={!printerType}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a printer" />
+                  <SelectValue
+                    placeholder={
+                      printerType ? "Select a printer" : "Select a type first"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {printerOptions.map((printer) => (
@@ -260,7 +296,7 @@ export default function PrintGcode() {
                   ))}
                 </SelectContent>
               </Select>
-              {printerOptions.length === 0 ? (
+              {printerType && printerOptions.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No printers available. Add printers via the Printer Management
                   page.

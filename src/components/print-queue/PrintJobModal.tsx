@@ -136,6 +136,7 @@ export function PrintJobModal({
   const [archiveId, setArchiveId] = useState<number | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0); // 0-100
   const [uploadPhase, setUploadPhase] = useState<"sending" | "processing">(
     "sending",
@@ -269,6 +270,7 @@ export function PrintJobModal({
       setArchiveId(null);
       setUploadFile(null);
       setUploading(false);
+      setUploadError(null);
       setIsDraggingFile(false);
       setTargetingMode("model");
       setSelectedModel("");
@@ -343,6 +345,7 @@ export function PrintJobModal({
   async function handleUpload() {
     if (!uploadFile) return;
     setUploading(true);
+    setUploadError(null);
     setUploadProgress(0);
     setUploadPhase("sending");
     try {
@@ -414,9 +417,9 @@ export function PrintJobModal({
       }
       throw new Error("Upload timed out waiting for BamBuddy");
     } catch (err) {
-      toast.error(
-        `Upload failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      const message = err instanceof Error ? err.message : String(err);
+      setUploadError(message);
+      toast.error(`Upload failed: ${message}`);
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -991,6 +994,7 @@ export function PrintJobModal({
                           return;
                         }
                         setUploadFile(f);
+                        setUploadError(null);
                         setArchiveId(null);
                       }}
                     />
@@ -1019,6 +1023,7 @@ export function PrintJobModal({
                           const f = e.dataTransfer.files[0] ?? null;
                           if (f && acceptUploadFile(f)) {
                             setUploadFile(f);
+                            setUploadError(null);
                             setArchiveId(null);
                           }
                         }}
@@ -1069,6 +1074,19 @@ export function PrintJobModal({
                         )}
                       </div>
                     )}
+                    {uploadError && !uploading ? (
+                      <div className="flex items-start gap-2 rounded-md border border-orange-500/40 bg-orange-500/10 px-3 py-2 text-sm text-orange-700 dark:text-orange-300">
+                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <p className="font-medium">Upload failed</p>
+                          <p className="text-xs break-words">{uploadError}</p>
+                          <p className="text-xs mt-1">
+                            Check the file and try Next again, or choose a
+                            different file.
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
                     <p className="text-xs text-muted-foreground">
                       .gcode.3mf files exported from Bambu Studio or Orca Slicer
                     </p>

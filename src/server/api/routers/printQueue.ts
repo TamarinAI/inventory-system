@@ -94,6 +94,18 @@ async function computePendingPrinterHmsErrors(
   return hmsErrorsByPrinterId;
 }
 
+// Printers a job must never be moved onto: offline, or reporting HMS/AMS
+// errors. Reassignment paths (filament-short resolution) use this so a job
+// is never shuffled onto a faulted machine just because it has the colour.
+async function getUnhealthyPrinterIds(): Promise<Set<number>> {
+  const statuses = await listBambuddyPrinterStatuses().catch(() => []);
+  return new Set(
+    statuses
+      .filter((s) => !s.connected || (s.hms_errors ?? []).length > 0)
+      .map((s) => s.id),
+  );
+}
+
 function buildAssignmentColorNameMap(
   assignments: BambuddySpoolAssignment[],
 ): Map<string, string | null> {
@@ -722,7 +734,10 @@ export const printQueueRouter = router({
         item.filament_overrides?.[0]?.color ?? item.filament_color,
       );
 
-      const printers = await listBambuddyPrinters();
+      const unhealthyIds = await getUnhealthyPrinterIds();
+      const printers = (await listBambuddyPrinters()).filter(
+        (p) => p.id === item.printer_id || !unhealthyIds.has(p.id),
+      );
 
       // Search every printer, not just the one assigned - the original
       // colour may have moved, or may not exist anywhere anymore, in
@@ -821,6 +836,17 @@ export const printQueueRouter = router({
         }
       }
 
+      const currentItem = await getQueueItem(itemId).catch(() => null);
+      if (currentItem && currentItem.printer_id !== printerId) {
+        if ((await getUnhealthyPrinterIds()).has(printerId)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "That printer is offline or reporting errors - pick a printer that is ready.",
+          });
+        }
+      }
+
       // Same policy as overrideFilamentToFull: filament remaining isn't
       // tracked for print blocking, so top up every matching spool (any
       // printer) rather than a single spool.
@@ -910,7 +936,10 @@ export const printQueueRouter = router({
         return { status: "unavailable" as const };
       }
 
-      const printers = await listBambuddyPrinters();
+      const unhealthyIds = await getUnhealthyPrinterIds();
+      const printers = (await listBambuddyPrinters()).filter(
+        (p) => p.id === item.printer_id || !unhealthyIds.has(p.id),
+      );
       const candidates: {
         printerId: number;
         printerName: string;
