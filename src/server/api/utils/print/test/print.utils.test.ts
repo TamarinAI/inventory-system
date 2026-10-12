@@ -41,6 +41,48 @@ describe("print.utils", () => {
     ).toThrow("Only .gcode, .gco, .gc, and .bgcode files are supported.");
   });
 
+  describe("buildPrintUploadFilename", () => {
+    it("replaces characters Bambuddy rejects, such as &", () => {
+      expect(
+        buildPrintUploadFilename(
+          "David Phillips",
+          "Lab renos & Upgrade",
+          "pi cases.gcode.3mf",
+        ),
+      ).toBe("David-Phillips_Lab-renos-Upgr_pi-cases.gcode.3mf");
+    });
+  });
+
+  describe("buildPrintUploadFilename limits", () => {
+    it("transliterates accents", () => {
+      expect(buildPrintUploadFilename("José", "Café", "naïve.3mf")).toBe(
+        "Jose_Cafe_naive.3mf",
+      );
+    });
+
+    it("abbreviates long names to first name plus initials", () => {
+      expect(
+        buildPrintUploadFilename(
+          "Abbas Quettawala-Longsurname",
+          "Personal",
+          "bracket.3mf",
+        ),
+      ).toBe("Abbas-Q-L_Personal_bracket.3mf");
+    });
+
+    it("caps long names, keeps the extension and the name_project_file shape", () => {
+      const out = buildPrintUploadFilename(
+        "Abbas Quettawala-Longsurname",
+        "A very long project name that goes on and on",
+        `${"enclosure-".repeat(20)}.gcode.3mf`,
+      );
+      expect(out.length).toBeLessThanOrEqual(59);
+      expect(out.endsWith(".gcode.3mf")).toBe(true);
+      expect(out.split("_")).toHaveLength(3);
+      expect(/^[\w.\-()]+$/.test(out)).toBe(true);
+    });
+  });
+
   describe("printedByNameFromFilename", () => {
     it("recovers a single-word name from a scheme-built filename", () => {
       const filename = buildPrintUploadFilename(

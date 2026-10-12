@@ -50,10 +50,6 @@ import {
 
 const logger = rootLogger.child({ module: "router:printQueue" });
 
-function normalizeHex(hex: string | null | undefined): string {
-  return (hex ?? "").replace(/^#/, "").slice(0, 6).toUpperCase();
-}
-
 /** Human-readable colour names must come from the spool explicitly assigned
  *  to a specific printer/AMS/tray - not a type+hex guess. Bambu firmware
  *  reports "FFFFFF" for trays it can't read (no RFID / manual load), which
@@ -1035,7 +1031,10 @@ export const printQueueRouter = router({
     )
     .mutation(async ({ input }) => {
       const normalizedType = input.filamentType.toUpperCase();
-      const normalizedNewHex = normalizeHex(input.colorHex);
+      // Bambuddy's inventory API requires RRGGBBAA (8 hex chars).
+      const rawHex = input.colorHex.replace(/^#/, "").toUpperCase();
+      const normalizedNewHex =
+        rawHex.length >= 8 ? rawHex.slice(0, 8) : `${rawHex.slice(0, 6)}FF`;
 
       // Look up by the tray's actual assignment, not a type+hex guess - the
       // hex alone can't be trusted (see buildAssignmentColorNameMap).

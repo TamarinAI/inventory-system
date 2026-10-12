@@ -176,12 +176,23 @@ function QueueItemRow({
     item.printerHmsErrors != null &&
     item.printerHmsErrors.length > 0;
 
+  // Operational issues (filament out, cover open) are orange; real
+  // hardware faults stay red.
+  const printerErrorIsWarning =
+    hasPrinterError && item.printerHmsErrors!.every((e) => e.operational);
+
   const statusConfig = hasPrinterError
-    ? {
-        label: "Error",
-        className:
-          "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400",
-      }
+    ? printerErrorIsWarning
+      ? {
+          label: "Action needed",
+          className:
+            "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400",
+        }
+      : {
+          label: "Error",
+          className:
+            "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400",
+        }
     : (STATUS_CONFIG[status] ?? {
         label: status,
         className: "bg-slate-100 text-slate-600",
@@ -338,17 +349,24 @@ function QueueItemRow({
 
         {/* Printer error - AMS/HMS errors on the assigned printer */}
         {hasPrinterError && (
-          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 space-y-1">
-            <div className="flex items-start gap-1.5 text-xs text-destructive font-medium">
+          <div
+            className={`rounded-md border px-2 py-1.5 space-y-1 ${
+              printerErrorIsWarning
+                ? "border-orange-500/40 bg-orange-500/10 text-orange-700 dark:text-orange-300"
+                : "border-destructive/40 bg-destructive/10 text-destructive"
+            }`}
+          >
+            <div className="flex items-start gap-1.5 text-xs font-medium">
               <AlertTriangle className="h-3 w-3 shrink-0 mt-px" />
               <span>
-                {printerLabel} has an error - this job cannot start until it's
-                resolved.
+                {printerLabel}{" "}
+                {printerErrorIsWarning ? "needs attention" : "has an error"} -
+                this job cannot start until it's resolved.
               </span>
             </div>
             <ul className="space-y-0.5 pl-[18px]">
               {item.printerHmsErrors!.map((e, i) => (
-                <li key={i} className="flex gap-1.5 text-xs text-destructive">
+                <li key={i} className="flex gap-1.5 text-xs">
                   <span className="font-mono shrink-0">{e.code}</span>
                   <span>{e.description}</span>
                 </li>

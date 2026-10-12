@@ -6,19 +6,74 @@ const ALLOWED_GCODE_EXTENSIONS = [".gcode", ".gco", ".gc", ".bgcode"] as const;
 export const sanitizeFilename = (name: string) =>
   name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 
-const toHyphenSlug = (value: string) => value.trim().replace(/[\s_]+/g, "-");
+// Characters outside [\w.\-()] (e.g. "&") are rejected by Bambuddy's upload
+// filename allowlist, so they become hyphens along with whitespace/underscores.
+// Accents are transliterated first ("é" -> "e") so they aren't lost to hyphens.
+const toHyphenSlug = (value: string) =>
+  value
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+    .replace(/[\s_]+/g, "-")
+    .replace(/[^\w.\-()]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+// Bambu printers choke on long file names on their SD card / in the UI, so
+// the whole name (including extension) is capped. Room is left for the
+// "-v10" suffix resolveUniqueFilename may append.
+export const MAX_PRINT_FILENAME_LENGTH = 64;
+const VERSION_SUFFIX_RESERVE = 5;
+const MAX_NAME_SEGMENT = 20;
+const MAX_PROJECT_SEGMENT = 14;
+const MIN_FILE_BASE = 10;
+
+const truncate = (value: string, max: number) =>
+  value.slice(0, Math.max(0, max)).replace(/[-.]+$/, "");
+
+// Long names keep the first name and reduce the rest to initials
+// ("Abbas-Quettawala-Longsurname" -> "Abbas-Q-L") before any hard cut.
+const shortenPersonName = (slug: string) => {
+  if (slug.length <= MAX_NAME_SEGMENT) return slug;
+  const [first, ...rest] = slug.split("-");
+  const abbreviated = [first, ...rest.map((p) => p[0])].join("-");
+  return truncate(abbreviated, MAX_NAME_SEGMENT);
+};
 
 /**
  * Builds the {name}_{project}_{filename} print file name so downstream
  * systems (and humans) can split on "_" to recover uploader/project.
  * Spaces and underscores inside each segment become hyphens first so the
- * top-level underscores stay unambiguous delimiters.
+ * top-level underscores stay unambiguous delimiters. Unsupported characters
+ * are replaced and the result is capped at MAX_PRINT_FILENAME_LENGTH: the
+ * uploader and project are shortened first, then the original file's base
+ * name, so the extension (and the file's identity) survive.
  */
 export const buildPrintUploadFilename = (
   userName: string,
   projectName: string,
   originalFilename: string,
-) => [userName, projectName, originalFilename].map(toHyphenSlug).join("_");
+) => {
+  const { base, ext } = splitFilenameExtension(toHyphenSlug(originalFilename));
+  const budget =
+    MAX_PRINT_FILENAME_LENGTH - VERSION_SUFFIX_RESERVE - ext.length;
+
+  let name = shortenPersonName(toHyphenSlug(userName)) || "user";
+  let project = truncate(toHyphenSlug(projectName), MAX_PROJECT_SEGMENT) || "x";
+  // Two underscore separators.
+  const room = () => budget - name.length - project.length - 2;
+  if (base.length > room()) {
+    // Shrink the labels further before touching the file's own name.
+    const spare = Math.max(MIN_FILE_BASE, base.length) - room();
+    const shrink = (v: string, by: number) =>
+      truncate(v, v.length - by) || v[0];
+    const each = Math.ceil(spare / 2);
+    project = shrink(project, Math.min(each, project.length - 1));
+    name = shrink(name, Math.min(spare - each, name.length - 1));
+  }
+  const fileBase = truncate(base, Math.max(MIN_FILE_BASE, room())) || "print";
+  return `${name}_${project}_${fileBase}${ext}`;
+};
 
 /**
  * Splits a print upload filename back into its {name}, {project}, and

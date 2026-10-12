@@ -7,7 +7,12 @@ import {
 import { logger as rootLogger } from "@/server/lib/logger";
 
 const logger = rootLogger.child({ module: "router:print" });
-import { describeHmsErrors, hmsErrorSummary } from "@/server/lib/hmsErrors";
+import {
+  type HmsErrorInfo,
+  describeHmsErrors,
+  hmsAttentionLevel,
+  hmsErrorSummary,
+} from "@/server/lib/hmsErrors";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { readFile } from "node:fs/promises";
@@ -38,6 +43,7 @@ import {
   reprintArchive as reprintBambuddyArchive,
   pauseBambuddyPrint,
   resumeBambuddyPrint,
+  clearBambuddyHmsErrors,
   stopBambuddyPrint,
   stopBambuddyCameraStream,
   clearBambuddyBuildPlate,
@@ -1109,6 +1115,13 @@ export const printRouter = router({
     .mutation(async ({ input }) => {
       await stopBambuddyCameraStream(input.bambuddyId);
       return { success: true };
+    }),
+
+  clearPrinterErrors: userProcedure
+    .input(z.object({ bambuddyId: z.number().int().positive() }))
+    .mutation(async ({ input }) => {
+      await clearBambuddyHmsErrors(input.bambuddyId);
+      return { success: true, message: "Printer errors cleared." };
     }),
 
   clearBuildPlate: userProcedure
@@ -2418,7 +2431,8 @@ export const printRouter = router({
 
       let state = "UNKNOWN";
       let stateMessage = "Unknown";
-      let hmsErrorList: { code: string; description: string }[] = [];
+      let hmsErrorList: HmsErrorInfo[] = [];
+      let attentionLevel: "warning" | "error" = "error";
       let nozzleTemp: number | null = null;
       let targetNozzleTemp: number | null = null;
       let bedTemp: number | null = null;
@@ -2496,6 +2510,7 @@ export const printRouter = router({
           state = "ATTENTION";
           stateMessage = hmsErrorMessage(hmsErrors);
           hmsErrorList = describeHmsErrors(hmsErrors);
+          attentionLevel = hmsAttentionLevel(hmsErrorList);
         }
       }
 
@@ -2534,6 +2549,7 @@ export const printRouter = router({
         state,
         stateMessage,
         hmsErrors: hmsErrorList,
+        attentionLevel,
         nozzleTemp,
         targetNozzleTemp,
         bedTemp,
@@ -2640,7 +2656,8 @@ export const printRouter = router({
           webcamUrl: printer.webcamUrl ?? null,
           state,
           stateMessage,
-          hmsErrors: [] as { code: string; description: string }[],
+          hmsErrors: [] as HmsErrorInfo[],
+          attentionLevel: "error" as "warning" | "error",
           nozzleTemp,
           targetNozzleTemp,
           bedTemp,
@@ -2736,7 +2753,8 @@ export const printRouter = router({
       let progress: number | null = null;
       let timeRemaining: number | null = null;
       let fileName: string | null = null;
-      let hmsErrors: { code: string; description: string }[] = [];
+      let hmsErrors: HmsErrorInfo[] = [];
+      let attentionLevel: "warning" | "error" = "error";
       let awaitingPlateClear = false;
 
       if (s === null) {
@@ -2781,6 +2799,7 @@ export const printRouter = router({
           state = "ATTENTION";
           stateMessage = hmsErrorMessage(s.hms_errors);
           hmsErrors = describeHmsErrors(s.hms_errors);
+          attentionLevel = hmsAttentionLevel(hmsErrors);
         }
         progress = s.progress ?? null;
         timeRemaining = s.remaining_time ?? null;
@@ -2812,6 +2831,7 @@ export const printRouter = router({
         state,
         stateMessage,
         hmsErrors,
+        attentionLevel,
         amsSlots,
         progress,
         timeRemaining,
@@ -2888,7 +2908,8 @@ export const printRouter = router({
           printerType: "PRUSA" as const,
           state,
           stateMessage,
-          hmsErrors: [] as { code: string; description: string }[],
+          hmsErrors: [] as HmsErrorInfo[],
+          attentionLevel: "error" as "warning" | "error",
           amsSlots: [] as {
             amsId: number;
             trayId: number;

@@ -31,6 +31,8 @@ import {
   CheckSquare,
   Info,
   Pencil,
+  ExternalLink,
+  AlertTriangle,
 } from "lucide-react";
 import type { AMSTray } from "@/server/lib/bambuddy";
 import type { inferRouterOutputs } from "@trpc/server";
@@ -63,8 +65,13 @@ const formatDuration = (totalMinutes: number): string => {
   return `${m}m`;
 };
 
-const statusColor = (state: string) => {
+const isWarning = (status: { state: string; attentionLevel?: string }) =>
+  status.state.toUpperCase() === "ATTENTION" &&
+  status.attentionLevel === "warning";
+
+const statusColor = (state: string, warning = false) => {
   const s = state.toUpperCase();
+  if (s === "ATTENTION" && warning) return "bg-orange-500";
   if (["PRINTING", "PAUSED", "BUSY"].includes(s)) return "bg-yellow-500";
   if (["ATTENTION", "UNREACHABLE"].includes(s)) return "bg-red-500";
   if (["IDLE", "READY", "FINISHED"].includes(s)) return "bg-green-500";
@@ -96,7 +103,7 @@ function PrinterCard({
       onClick={onClick}
     >
       <div
-        className={`absolute top-0 left-0 right-0 h-1 transition-colors duration-500 z-20 ${statusColor(status.state)}`}
+        className={`absolute top-0 left-0 right-0 h-1 transition-colors duration-500 z-20 ${statusColor(status.state, isWarning(status))}`}
       />
 
       <CardContent className="px-4 py-2 flex flex-col h-full gap-3 relative z-10 pt-2.5">
@@ -114,18 +121,20 @@ function PrinterCard({
               </span>
             </div>
             <p
-              className={`text-[11px] truncate ${["ATTENTION", "UNREACHABLE", "ERROR"].includes(status.state.toUpperCase()) ? "text-destructive font-medium" : "text-muted-foreground"}`}
+              className={`text-[11px] truncate ${isWarning(status) ? "text-orange-600 dark:text-orange-400 font-medium" : ["ATTENTION", "UNREACHABLE", "ERROR"].includes(status.state.toUpperCase()) ? "text-destructive font-medium" : "text-muted-foreground"}`}
               title={status.stateMessage}
             >
               {status.stateMessage}
             </p>
           </div>
           <Badge
-            variant={statusBadgeVariant(status.state)}
-            className="shrink-0 mt-0.5 pl-2 pr-2.5 py-1 shadow-sm transition-colors border-border/20"
+            variant={
+              isWarning(status) ? "outline" : statusBadgeVariant(status.state)
+            }
+            className={`shrink-0 mt-0.5 pl-2 pr-2.5 py-1 shadow-sm transition-colors border-border/20 ${isWarning(status) ? "border-orange-500/50 text-orange-600 dark:text-orange-400" : ""}`}
           >
             <span
-              className={`h-2 w-2 rounded-full mr-1.5 ${statusColor(status.state)} ${["PRINTING", "BUSY"].includes(status.state.toUpperCase()) ? "animate-pulse" : ""}`}
+              className={`h-2 w-2 rounded-full mr-1.5 ${statusColor(status.state, isWarning(status))} ${["PRINTING", "BUSY"].includes(status.state.toUpperCase()) ? "animate-pulse" : ""}`}
             />
             <span className="uppercase text-[10px] tracking-wider font-bold whitespace-nowrap">
               {status.state}
@@ -159,7 +168,7 @@ function PrinterCard({
 
           <div className="h-2.5 w-full overflow-hidden rounded-full bg-secondary/80 shadow-inner border border-border/40">
             <div
-              className={`h-full transition-all duration-1000 ease-out rounded-full ${statusColor(status.state)}`}
+              className={`h-full transition-all duration-1000 ease-out rounded-full ${statusColor(status.state, isWarning(status))}`}
               style={{ width: `${status.progress ?? 0}%` }}
             />
           </div>
@@ -729,6 +738,14 @@ function PrinterDetail({
     onError: (error) => toast.error(error.message),
   });
 
+  const clearErrorsMutation = trpc.print.clearPrinterErrors.useMutation({
+    onSuccess: async (result) => {
+      toast.success(result.message);
+      await utils.print.getLivePrinterStatuses.invalidate();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
   const [ratingDialogOpen, setRatingDialogOpen] = useState(false);
 
   const [cameraMode, setCameraMode] = useState<CameraMode>("snapshot");
@@ -813,22 +830,60 @@ function PrinterDetail({
         {["ATTENTION", "UNREACHABLE", "ERROR"].includes(
           status.state.toUpperCase(),
         ) ? (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
-            {status.hmsErrors && status.hmsErrors.length > 0 ? (
-              <ul className="space-y-1">
-                {status.hmsErrors.map((e, i) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <span className="font-semibold shrink-0">{e.code}</span>
-                    <span>{e.description}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="flex items-start gap-2">
-                <span className="font-semibold shrink-0">Error:</span>
-                <span>{status.stateMessage}</span>
-              </div>
-            )}
+          <div
+            className={`rounded-lg border px-3 py-2.5 text-sm ${
+              isWarning(status)
+                ? "border-orange-500/50 bg-orange-500/10 text-orange-700 dark:text-orange-300"
+                : "border-destructive/50 bg-destructive/10 text-destructive"
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              {status.hmsErrors && status.hmsErrors.length > 0 ? (
+                <ul className="space-y-1">
+                  {status.hmsErrors.map((e, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      {isWarning(status) ? (
+                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                      ) : null}
+                      <span className="font-semibold shrink-0">{e.code}</span>
+                      <span>{e.description}</span>
+                      <a
+                        href={e.wikiUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 inline-flex items-center gap-1 underline underline-offset-2 text-xs mt-0.5"
+                      >
+                        Bambu info
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="flex items-start gap-2">
+                  <span className="font-semibold shrink-0">Error:</span>
+                  <span>{status.stateMessage}</span>
+                </div>
+              )}
+              {status.printerType === "BAMBU" && status.bambuddyId != null ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 bg-background/60"
+                  disabled={clearErrorsMutation.isPending}
+                  onClick={() =>
+                    clearErrorsMutation.mutate({
+                      bambuddyId: status.bambuddyId!,
+                    })
+                  }
+                >
+                  {clearErrorsMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : null}
+                  Clear error
+                </Button>
+              ) : null}
+            </div>
           </div>
         ) : null}
 
@@ -839,7 +894,7 @@ function PrinterDetail({
             </span>
             <div className="flex items-center gap-2">
               <span
-                className={`h-2 w-2 rounded-full ${statusColor(status.state)}`}
+                className={`h-2 w-2 rounded-full ${statusColor(status.state, isWarning(status))}`}
               />
               <span className="font-semibold">{status.stateMessage}</span>
             </div>

@@ -478,6 +478,19 @@ export async function clearBambuddyBuildPlate(
   await checkResponse(res, "clear build plate");
 }
 
+export async function clearBambuddyHmsErrors(printerId: number): Promise<void> {
+  const { endpoint, apiKey } = getConfig();
+  const res = await fetch(
+    `${endpoint}/api/v1/printers/${printerId}/hms/clear`,
+    {
+      method: "POST",
+      headers: headers(apiKey),
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+  await checkResponse(res, "clear printer errors");
+}
+
 export async function stopBambuddyCameraStream(
   printerId: number,
 ): Promise<void> {
@@ -809,6 +822,21 @@ async function collectFilamentSlotsFromStatuses(opts?: {
           remain: tray.remain,
         });
       }
+    }
+    // External (manually loaded) spool holders: ams_id 255, tray_id 0/1
+    for (const tray of status.vt_tray ?? []) {
+      slots.push({
+        printer_id: printer.id,
+        printer_name: printer.name,
+        ams_id: 255,
+        tray_id: tray.id - 254,
+        flat_index: 1020 + (tray.id - 254),
+        tray_type: tray.tray_type ?? null,
+        tray_color: tray.tray_color ?? null,
+        tray_id_name: tray.tray_id_name ?? null,
+        tray_sub_brands: tray.tray_sub_brands ?? null,
+        remain: tray.remain,
+      });
     }
   }
   return slots;
